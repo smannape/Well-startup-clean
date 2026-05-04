@@ -1,0 +1,28 @@
+{
+    # ACME email for TLS certificate registration.
+    # Falls back to a placeholder when deploying on plain IP (HTTP-only mode).
+    email {$ACME_EMAIL:noreply@example.com}
+}
+
+# Default: PUBLIC_HOST=:80  → plain HTTP, no TLS (works on any IP).
+# For a real domain with auto-TLS set PUBLIC_HOST=yourdomain.com in .env.
+{$PUBLIC_HOST::80} {
+    encode zstd gzip
+
+    # API → FastAPI container
+    handle_path /api/* {
+        reverse_proxy api:8000 {
+            header_up Host {host}
+            header_up X-Real-IP {remote_host}
+        }
+    }
+
+    # Static dashboard → nginx container (Vite build + JSON snapshots)
+    handle {
+        reverse_proxy web:80
+    }
+
+    # Long cache for Vite-hashed assets
+    @assets path *.js *.css *.png *.jpg *.svg *.woff *.woff2
+    header @assets Cache-Control "public, max-age=31536000, immutable"
+}

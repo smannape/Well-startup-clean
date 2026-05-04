@@ -1,0 +1,90 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: well-startup-db
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-wells}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-wells}
+      POSTGRES_DB: ${POSTGRES_DB:-wells}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-wells}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks: [internal]
+
+  etl:
+    image: python:3.11-slim
+    container_name: well-startup-etl
+    working_dir: /work
+    environment:
+      DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-wells}:${POSTGRES_PASSWORD:-wells}@db:5432/${POSTGRES_DB:-wells}
+    volumes:
+      - .:/work
+    depends_on:
+      db:
+        condition: service_healthy
+    command: >
+      sh -c "pip install --no-cache-dir pandas openpyxl sqlalchemy psycopg2-binary &&
+             python scripts/etl.py --postgres &&
+             echo 'ETL completed; exiting.'"
+    restart: "no"
+    profiles: ["etl"]   # only runs when explicitly requested
+    networks: [internal]
+
+  api:
+    build: ./backend
+    container_name: well-startup-api
+    environment:
+      DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-wells}:${POSTGRES_PASSWORD:-wells}@db:5432/${POSTGRES_DB:-wells}
+    volumes:
+      - ./frontend/public:/app/frontend/public:ro
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "python -c 'import urllib.request,sys; sys.exit(0 if urllib.request.urlopen(\"http://localhost:8000/api/health\").status==200 else 1)'"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+    networks: [internal]
+
+  web:
+    build: ./frontend
+    container_name: well-startup-web
+    depends_on:
+      - api
+    restart: unless-stopped
+    networks: [internal]
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: well-startup-caddy
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      PUBLIC_HOST: ${PUBLIC_HOST:-:80}
+      ACME_EMAIL: ${ACME_EMAIL:-}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - web
+      - api
+    restart: unless-stopped
+    networks: [internal]
+
+volumes:
+  pgdata:
+  caddy_data:
+  caddy_config:
+
+networks:
+  internal:
+    driver: bridge
