@@ -32,8 +32,13 @@ services:
   web:
     build: ./frontend
     container_name: well-startup-web
-    ports:
-      - "8080:80"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.well-web.rule=Host(`wellstat.tech`) || Host(`www.wellstat.tech`)"
+      - "traefik.http.routers.well-web.entrypoints=websecure"
+      - "traefik.http.routers.well-web.tls=true"
+      - "traefik.http.routers.well-web.tls.certresolver=letsencrypt"
+      - "traefik.http.services.well-web.loadbalancer.server.port=80"
     depends_on:
       - api
     restart: unless-stopped
