@@ -27,43 +27,20 @@ services:
       db:
         condition: service_healthy
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD-SHELL", "python -c 'import urllib.request,sys; sys.exit(0 if urllib.request.urlopen(\"http://localhost:8000/api/health\").status==200 else 1)'"]
-      interval: 30s
-      timeout: 5s
-      retries: 5
     networks: [internal]
 
   web:
     build: ./frontend
     container_name: well-startup-web
-    depends_on:
-      - api
-    restart: unless-stopped
-    networks: [internal]
-
-  caddy:
-    build: ./caddy
-    container_name: well-startup-caddy
     ports:
-      - "80:80"
-      - "443:443"
-    environment:
-      PUBLIC_HOST: ${PUBLIC_HOST:-:80}
-      ACME_EMAIL: ${ACME_EMAIL:-}
-    volumes:
-      - caddy_data:/data
-      - caddy_config:/config
+      - "8080:80"
     depends_on:
-      - web
       - api
     restart: unless-stopped
     networks: [internal]
 
 volumes:
   pgdata:
-  caddy_data:
-  caddy_config:
 
 networks:
   internal:
