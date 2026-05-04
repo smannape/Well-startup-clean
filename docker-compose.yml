@@ -16,32 +16,13 @@ services:
       retries: 10
     networks: [internal]
 
-  etl:
-    image: python:3.11-slim
-    container_name: well-startup-etl
-    working_dir: /work
-    environment:
-      DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-wells}:${POSTGRES_PASSWORD:-wells}@db:5432/${POSTGRES_DB:-wells}
-    volumes:
-      - .:/work
-    depends_on:
-      db:
-        condition: service_healthy
-    command: >
-      sh -c "pip install --no-cache-dir pandas openpyxl sqlalchemy psycopg2-binary &&
-             python scripts/etl.py --postgres &&
-             echo 'ETL completed; exiting.'"
-    restart: "no"
-    profiles: ["etl"]   # only runs when explicitly requested
-    networks: [internal]
-
   api:
-    build: ./backend
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
     container_name: well-startup-api
     environment:
       DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-wells}:${POSTGRES_PASSWORD:-wells}@db:5432/${POSTGRES_DB:-wells}
-    volumes:
-      - ./frontend/public:/app/frontend/public:ro
     depends_on:
       db:
         condition: service_healthy
@@ -62,7 +43,7 @@ services:
     networks: [internal]
 
   caddy:
-    image: caddy:2-alpine
+    build: ./caddy
     container_name: well-startup-caddy
     ports:
       - "80:80"
@@ -71,7 +52,6 @@ services:
       PUBLIC_HOST: ${PUBLIC_HOST:-:80}
       ACME_EMAIL: ${ACME_EMAIL:-}
     volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
     depends_on:
